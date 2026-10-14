@@ -396,8 +396,8 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
         cross,
         CascadeConfig(DEPTH, DEPTH, EF_SEARCH, rerank=RerankBudget(RERANK_DEPTH, None)),
     )
-    order = np.random.default_rng(5).permutation(nq)[: min(latency_queries, nq)]
-    cascade = _cascade_latency(engine, [queries[i].text for i in order], deploy_alpha)
+    timed = np.random.default_rng(5).permutation(nq)[: min(latency_queries, nq)]
+    cascade = _cascade_latency(engine, [queries[i].text for i in timed], deploy_alpha)
     cascade["config"] = {"bm25f": grid[deploy_ci].to_json(), "alpha": deploy_alpha}
     filtered = _filtered_section(
         catalog, queries, grades, q_tokens, q_vecs, bm25f_default, graph, vectors
