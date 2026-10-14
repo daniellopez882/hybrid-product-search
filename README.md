@@ -1,5 +1,7 @@
 # hybrid-product-search
 
+[![ci](https://github.com/daniellopez882/hybrid-product-search/actions/workflows/ci.yml/badge.svg)](https://github.com/daniellopez882/hybrid-product-search/actions/workflows/ci.yml) ![python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white) ![licence](https://img.shields.io/badge/licence-MIT-green)
+
 A retrieve, fuse and rerank search engine for a furniture and home-goods catalogue, written
 from the postings up. Lexical retrieval is field-weighted BM25F over a bit-packed inverted index,
 pruned with block-max WAND; dense retrieval is an HNSW graph over bge-small-en-v1.5 vectors; both
