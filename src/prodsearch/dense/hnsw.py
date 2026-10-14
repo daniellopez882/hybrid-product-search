@@ -33,6 +33,24 @@ def _dist(X: np.ndarray, i: int, q: np.ndarray) -> float:
     return np.float32(1.0) - acc
 
 
+@nb.njit(cache=True, nogil=True, fastmath=True, inline="always")
+def _dist4(X: np.ndarray, a: int, b: int, c: int, e: int, q: np.ndarray) -> tuple:
+    """Four distances in one pass: four independent row streams keep more loads in flight,
+    which matters because neighbour rows are scattered and the loop is memory bound."""
+    s0 = np.float32(0.0)
+    s1 = np.float32(0.0)
+    s2 = np.float32(0.0)
+    s3 = np.float32(0.0)
+    for j in range(q.shape[0]):
+        qj = q[j]
+        s0 += X[a, j] * qj
+        s1 += X[b, j] * qj
+        s2 += X[c, j] * qj
+        s3 += X[e, j] * qj
+    one = np.float32(1.0)
+    return one - s0, one - s1, one - s2, one - s3
+
+
 # Binary min-heap on (key, id) pairs stored in two arrays.
 @nb.njit(cache=True, nogil=True, inline="always")
 def _push(keys: np.ndarray, ids: np.ndarray, size: int, key: float, ident: int) -> int:
@@ -80,6 +98,8 @@ def _search_layer(
     ws_epoch[0] += 1
     epoch = ws_epoch[0]
     use_mask = mask.shape[0] > 0
+    fresh = np.empty(nb0.shape[1], dtype=np.int32)
+    fresh_d = np.empty(nb0.shape[1], dtype=np.float32)
     n_cand = 0
     n_res = 0  # max-heap through negated keys: res_k[0] is minus the farthest kept distance
     for j in range(n_eps):
@@ -101,12 +121,27 @@ def _search_layer(
             break
         row = up_off[c] + layer - 1
         count = cnt0[c] if layer == 0 else cntu[row]
+        n_fresh = 0
         for j in range(count):
             e = nb0[c, j] if layer == 0 else nbu[row, j]
-            if ws_visit[e] == epoch:
-                continue
-            ws_visit[e] = epoch
-            d = _dist(X, e, q)
+            if ws_visit[e] != epoch:
+                ws_visit[e] = epoch
+                fresh[n_fresh] = e
+                n_fresh += 1
+        j = 0
+        while j + 4 <= n_fresh:
+            d0, d1, d2, d3 = _dist4(X, fresh[j], fresh[j + 1], fresh[j + 2], fresh[j + 3], q)
+            fresh_d[j] = d0
+            fresh_d[j + 1] = d1
+            fresh_d[j + 2] = d2
+            fresh_d[j + 3] = d3
+            j += 4
+        while j < n_fresh:
+            fresh_d[j] = _dist(X, fresh[j], q)
+            j += 1
+        for j in range(n_fresh):
+            e = fresh[j]
+            d = fresh_d[j]
             if n_res < ef or d < -res_k[0]:
                 n_cand = _push(cand_k, cand_i, n_cand, d, e)
                 if not use_mask or mask[e] != 0:
