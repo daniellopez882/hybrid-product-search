@@ -28,10 +28,14 @@ class PairScorer(Protocol):
     def score(self, query: str, passages: Sequence[str]) -> np.ndarray: ...
 
 
-def _session(path: Path, threads: int | None) -> ort.InferenceSession:
+def _session(path: Path, threads: int | None, spin: bool) -> ort.InferenceSession:
     options = ort.SessionOptions()
     if threads:
         options.intra_op_num_threads = threads
+    # The cascade alternates two ONNX sessions with numba kernels on the same cores. Spinning
+    # workers busy-wait for the next parallel section, so after one session returns its threads
+    # still hold the cores the next stage needs; the benchmark measures both settings.
+    options.add_session_config_entry("session.intra_op.allow_spinning", "1" if spin else "0")
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     return ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
 
@@ -62,12 +66,13 @@ class OnnxBiEncoder:
         max_length: int = 128,
         batch_size: int = 32,
         threads: int | None = None,
+        spin: bool = False,
     ) -> None:
         self.model = model
         self.max_length = max_length
         self.batch_size = batch_size
         self.tokenizer = _tokenizer(model.path("tokenizer.json"), max_length, pair=False)
-        self.session = _session(model.path(model.onnx_file), threads)
+        self.session = _session(model.path(model.onnx_file), threads, spin)
 
     def _embed(self, texts: Sequence[str]) -> np.ndarray:
         out = self.session.run(["last_hidden_state"], _feeds(self.tokenizer.encode_batch(texts)))
@@ -96,12 +101,13 @@ class OnnxCrossEncoder:
         max_length: int = 128,
         batch_size: int = 25,
         threads: int | None = None,
+        spin: bool = False,
     ) -> None:
         self.model = model
         self.max_length = max_length
         self.batch_size = batch_size
         self.tokenizer = _tokenizer(model.path("tokenizer.json"), max_length, pair=True)
-        self.session = _session(model.path(model.onnx_file), threads)
+        self.session = _session(model.path(model.onnx_file), threads, spin)
 
     def score(self, query: str, passages: Sequence[str]) -> np.ndarray:
         scores = np.empty(len(passages), dtype=np.float32)
