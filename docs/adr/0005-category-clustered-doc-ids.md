@@ -49,3 +49,11 @@ internal order.
 - **Ordering by popularity (review count).** Groups strong documents for impact-ordered
   processing, but does not cluster the term vocabulary, which is what both the gaps and the block
   maxima need.
+
+## Outcome on WANDS
+
+The full benchmark of 2026-10-14 (`bench/results/wands.json`) measured both orders. Category
+order needs 7.50 bits per doc id against 8.12, and block-max WAND decodes 49.1 blocks per query
+at k = 10 against 68.8, with a median of 0.264 ms against 0.345 ms. The order did what it was
+for. It did not make block-max WAND clearly better than exhaustive scoring, which takes
+0.281 ms at k = 10 with a shorter tail and is faster at k = 100; the README reports both.
