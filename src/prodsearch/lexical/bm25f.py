@@ -56,7 +56,12 @@ SINGLE_FIELD_BM25 = BM25FConfig(weights={"all": 1.0}, b={"all": 0.75})
 
 @dataclass
 class FieldedPostings:
-    """Per-field term frequencies for every (term, doc) pair, in term-then-doc order."""
+    """Per-field term frequencies for every (term, doc) pair, in term-then-doc order.
+
+    Postings use internal doc ids; `order[i]` is the catalogue position of internal doc i. An
+    order that puts similar products next to each other shrinks d-gaps and tightens block maxima
+    (ADR 5); the identity order keeps catalogue positions.
+    """
 
     fields: tuple[str, ...]
     vocab: dict[str, int]
@@ -65,18 +70,28 @@ class FieldedPostings:
     docs: np.ndarray
     tf: np.ndarray
     lengths: np.ndarray
+    order: np.ndarray
 
     @classmethod
-    def build(cls, field_tokens: Mapping[str, Sequence[Sequence[str]]]) -> FieldedPostings:
+    def build(
+        cls,
+        field_tokens: Mapping[str, Sequence[Sequence[str]]],
+        order: np.ndarray | None = None,
+    ) -> FieldedPostings:
         fields = tuple(field_tokens)
         n_docs = len(next(iter(field_tokens.values()))) if fields else 0
+        order = np.arange(n_docs, dtype=np.int64) if order is None else np.asarray(order)
+        if not np.array_equal(np.sort(order), np.arange(n_docs)):
+            raise ValueError("order must be a permutation of the catalogue positions")
         vocab: dict[str, int] = {}
         keyed: list[tuple[np.ndarray, np.ndarray]] = []
         lengths = np.zeros((len(fields), n_docs), dtype=np.float32)
         for fi, name in enumerate(fields):
-            docs_tokens = field_tokens[name]
-            if len(docs_tokens) != n_docs:
-                raise ValueError(f"field {name!r} has {len(docs_tokens)} docs, expected {n_docs}")
+            if len(field_tokens[name]) != n_docs:
+                raise ValueError(
+                    f"field {name!r} has {len(field_tokens[name])} docs, expected {n_docs}"
+                )
+            docs_tokens = [field_tokens[name][d] for d in order]
             lens = np.fromiter((len(t) for t in docs_tokens), dtype=np.int64, count=n_docs)
             lengths[fi] = lens
             ids = np.fromiter(
@@ -103,6 +118,7 @@ class FieldedPostings:
             docs=(all_keys % max(n_docs, 1)).astype(np.int32),
             tf=tf,
             lengths=lengths,
+            order=order.astype(np.int32),
         )
 
     def pseudo_tf(self, config: BM25FConfig) -> np.ndarray:
@@ -130,9 +146,13 @@ class LexicalIndex:
     idf: np.ndarray
     scale: float
     config: BM25FConfig
+    order: np.ndarray
     _ix: tuple = field(init=False, repr=False)
+    _rank: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self._rank = np.empty_like(self.order)
+        self._rank[self.order] = np.arange(self.order.shape[0], dtype=self.order.dtype)
         lay = self.layout
         self._ix = (
             lay.words,
@@ -184,6 +204,7 @@ class LexicalIndex:
             idf=idf.astype(np.float32),
             scale=scale,
             config=config,
+            order=postings.order,
         )
 
     # ------------------------------------------------------------------ query
@@ -200,9 +221,12 @@ class LexicalIndex:
         mask: np.ndarray | None = None,
         method: str = "bmw",
     ) -> tuple[np.ndarray, np.ndarray, dict[str, int]]:
-        """Top-k (doc ids, BM25F scores, kernel statistics) for an analysed query."""
+        """Top-k (catalogue positions, BM25F scores, kernel statistics) for an analysed query.
+
+        Ties are broken by internal doc id, i.e. by position in the index's doc order.
+        """
         terms, weights = self.query_terms(tokens)
-        m = _NO_MASK if mask is None else mask
+        m = _NO_MASK if mask is None else np.ascontiguousarray(mask[self.order])
         bs = self.layout.block_size
         if method == "bmw":
             docs, scores, stats = wand_topk(self._ix, terms, weights, k, m, bs, True)
@@ -213,16 +237,15 @@ class LexicalIndex:
         else:
             raise ValueError(f"unknown method {method!r}; expected one of {METHODS}")
         return (
-            docs,
+            self.order[docs],
             scores.astype(np.float64) * self.scale,
             {"scored": int(stats[0]), "blocks_decoded": int(stats[1]), "skips": int(stats[2])},
         )
 
     def score(self, tokens: Sequence[str], docs: np.ndarray) -> np.ndarray:
         terms, weights = self.query_terms(tokens)
-        raw = score_docs(
-            self._ix, terms, weights, np.asarray(docs, dtype=np.int32), self.layout.block_size
-        )
+        internal = self._rank[np.asarray(docs, dtype=np.int64)].astype(np.int32)
+        raw = score_docs(self._ix, terms, weights, internal, self.layout.block_size)
         return raw.astype(np.float64) * self.scale
 
     # ------------------------------------------------------------------ persistence
@@ -249,6 +272,7 @@ class LexicalIndex:
             blk_max=self.blk_max,
             term_max=self.term_max,
             idf=self.idf,
+            order=self.order,
             **self.layout.arrays(),
         )
 
@@ -268,6 +292,7 @@ class LexicalIndex:
                 idf=a["idf"],
                 scale=float(meta["scale"]),
                 config=BM25FConfig.from_json(meta["config"]),
+                order=a["order"],
             )
 
 

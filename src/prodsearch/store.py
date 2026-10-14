@@ -34,6 +34,15 @@ def field_tokens(catalog: Catalog, fields: Sequence[str] = FIELDS) -> dict[str, 
     return {f: [analyze(catalog.field_text(d, f)) for d in range(len(catalog))] for f in fields}
 
 
+def clustered_order(catalog: Catalog) -> np.ndarray:
+    """Internal doc order for the postings: by category path, then class, then name."""
+    key = [
+        (catalog.categories[d].lower(), catalog.classes[d].lower(), catalog.names[d].lower())
+        for d in range(len(catalog))
+    ]
+    return np.array(sorted(range(len(catalog)), key=key.__getitem__), dtype=np.int64)
+
+
 def single_field(tokens: dict[str, list[list[str]]]) -> dict[str, list[list[str]]]:
     """All fields concatenated into one, for plain BM25."""
     n = len(next(iter(tokens.values())))
@@ -41,7 +50,8 @@ def single_field(tokens: dict[str, list[list[str]]]) -> dict[str, list[list[str]
 
 
 def build_lexical(catalog: Catalog, config: BM25FConfig = DEFAULT_BM25F) -> LexicalIndex:
-    return LexicalIndex.build(FieldedPostings.build(field_tokens(catalog)), config)
+    postings = FieldedPostings.build(field_tokens(catalog), clustered_order(catalog))
+    return LexicalIndex.build(postings, config)
 
 
 @dataclass

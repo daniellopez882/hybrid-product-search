@@ -33,14 +33,18 @@ def corpora(draw):
         k1=draw(st.sampled_from([0.9, 1.2, 2.0])),
     )
     block = draw(st.sampled_from([1, 2, 4, 16, 128]))
-    return LexicalIndex.build(FieldedPostings.build(tokens), config, block_size=block)
+    order = rng.permutation(n_docs) if draw(st.booleans()) else None
+    return LexicalIndex.build(FieldedPostings.build(tokens, order), config, block_size=block)
 
 
 queries = st.lists(st.sampled_from([*VOCAB, "unseen"]), min_size=0, max_size=6)
 
 
 def brute_force(index: LexicalIndex, tokens, k: int, mask=None):
-    """Top-k straight from the uncompressed impacts, without any kernel code."""
+    """Top-k straight from the uncompressed impacts, without any kernel code.
+
+    Works on internal ids (ties to the lower one) and maps to catalogue positions at the end.
+    """
     terms, weights = index.query_terms(tokens)
     docs_all = index.layout.decode()
     ptr = index.layout.blk_post[index.layout.term_blk]
@@ -50,9 +54,9 @@ def brute_force(index: LexicalIndex, tokens, k: int, mask=None):
         np.add.at(acc, docs_all[lo:hi], index.impacts[lo:hi].astype(np.int64) * w)
     cand = np.flatnonzero(acc > 0)
     if mask is not None:
-        cand = cand[mask[cand] > 0]
-    order = np.lexsort((cand, -acc[cand]))[:k]
-    return cand[order], acc[cand[order]]
+        cand = cand[mask[index.order[cand]] > 0]
+    top = cand[np.lexsort((cand, -acc[cand]))[:k]]
+    return index.order[top], acc[top]
 
 
 @settings(max_examples=120, deadline=None)
@@ -103,3 +107,23 @@ def test_block_max_prunes_on_a_skewed_corpus() -> None:
     _, _, bmw = index.search(["common", "rare"], 10, method="bmw")
     assert bmw["scored"] <= wand["scored"] < exhaustive["scored"]
     assert bmw["blocks_decoded"] < exhaustive["blocks_decoded"]
+
+
+@settings(max_examples=40, deadline=None)
+@given(st.integers(0, 2**32 - 1), queries)
+def test_doc_order_changes_ids_not_scores(seed: int, tokens) -> None:
+    rng = np.random.default_rng(seed)
+    n = 80
+    body = [[str(t) for t in rng.choice(VOCAB, size=rng.integers(0, 12))] for _ in range(n)]
+    config = BM25FConfig(weights={"body": 1.0}, b={"body": 0.75})
+    plain = LexicalIndex.build(FieldedPostings.build({"body": body}), config, block_size=4)
+    shuffled = LexicalIndex.build(
+        FieldedPostings.build({"body": body}, rng.permutation(n)), config, block_size=4
+    )
+    a_docs, a_scores, _ = plain.search(tokens, n)
+    b_docs, b_scores, _ = shuffled.search(tokens, n)
+    assert dict(zip(a_docs.tolist(), a_scores, strict=True)) == dict(
+        zip(b_docs.tolist(), b_scores, strict=True)
+    )
+    probe = rng.integers(0, n, size=10)
+    assert np.array_equal(plain.score(tokens, probe), shuffled.score(tokens, probe))

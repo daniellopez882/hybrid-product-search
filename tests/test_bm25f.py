@@ -38,7 +38,9 @@ def reference_bm25f(term: str, doc: int, config: BM25FConfig = CONFIG) -> float:
 
 @pytest.fixture(scope="module")
 def index() -> LexicalIndex:
-    return LexicalIndex.build(FieldedPostings.build(TOKENS), CONFIG, block_size=2)
+    # A non-identity doc order: results must still come back as catalogue positions.
+    order = np.array([2, 0, 3, 1])
+    return LexicalIndex.build(FieldedPostings.build(TOKENS, order), CONFIG, block_size=2)
 
 
 def test_scores_match_the_bm25f_formula(index: LexicalIndex) -> None:
@@ -62,6 +64,11 @@ def test_repeated_query_term_counts_twice(index: LexicalIndex) -> None:
     once = dict(zip(*index.search(["sofa"], 10)[:2], strict=True))
     twice = dict(zip(*index.search(["sofa", "sofa"], 10)[:2], strict=True))
     assert twice == pytest.approx({d: 2 * s for d, s in once.items()})
+
+
+def test_order_must_be_a_permutation() -> None:
+    with pytest.raises(ValueError, match="permutation"):
+        FieldedPostings.build(TOKENS, np.array([0, 0, 1, 2]))
 
 
 def test_zero_weight_field_does_not_match() -> None:
@@ -90,6 +97,7 @@ def test_save_load_roundtrip(index: LexicalIndex, tmp_path) -> None:
     loaded = LexicalIndex.load(path)
     assert loaded.vocab == index.vocab
     assert loaded.config == index.config
+    assert np.array_equal(loaded.order, index.order)
     for q in (["oak"], ["sofa", "grey"], ["table", "oak", "bed"]):
         a = index.search(q, 3)
         b = loaded.search(q, 3)

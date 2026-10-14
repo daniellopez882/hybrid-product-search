@@ -25,9 +25,9 @@ and quantised linearly to `uint16` against the largest `s` in the index (any pos
 to at least 1). A query score is an integer sum `sum_t qtf(t) * q(t, d)`, accumulated in int64.
 Block maxima and term maxima are maxima of those integers.
 
-All kernels break ties towards the lower document id. Because documents are visited in ascending
-id order, "enter the heap only if strictly above the threshold" implements that tie-break, and
-the pruning tests use strict comparisons as well.
+All kernels break ties towards the lower (internal) document id. Because documents are visited
+in ascending id order, "enter the heap only if strictly above the threshold" implements that
+tie-break, and the pruning tests use strict comparisons as well.
 
 ## Consequences
 

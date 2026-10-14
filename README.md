@@ -92,13 +92,17 @@ validation.
   into 128-document blocks; a block stores `gap - 1` for each posting at one bit width, so runs
   of consecutive ids cost nothing. Per-block arrays keep the last doc id, the bit width and two
   offsets, which lets a cursor skip whole blocks without decoding them.
+- **Doc order** ([ADR 5](docs/adr/0005-category-clustered-doc-ids.md)). Internal doc ids are
+  assigned in (category path, class, name) order, so products that share vocabulary sit next to
+  each other in every posting list; the index translates back to catalogue positions on the way
+  out. The benchmark also builds the index in WANDS order to measure what this buys.
 - **Impacts** ([ADR 1](docs/adr/0001-integer-impacts-for-exact-pruning.md)). The full BM25F term
   score is computed at index time and quantised to 16 bits, so a query score is an integer sum
   and every kernel produces bit-identical scores.
 - **Kernels** (`lexical/wand.py`). Exhaustive term-at-a-time scoring, WAND, and block-max WAND:
   the pivot is found from term upper bounds, then the block maxima of the blocks that would hold
   the pivot are checked before any block is decoded; if they cannot beat the threshold, the
-  strongest cursor jumps past the nearest block end. Ties go to the lower doc id, and the
+  strongest cursor jumps past the nearest block end. Ties go to the lower internal id, and the
   hypothesis tests require WAND and BMW to return exactly the exhaustive top-k, with and without
   filter masks, on random corpora with blocks as small as one posting.
 
@@ -167,7 +171,9 @@ benchmark.
 | BM25 WAND | 10 | pending benchmark | pending benchmark | pending benchmark | pending benchmark |
 | BM25 BMW | 10 | pending benchmark | pending benchmark | pending benchmark | pending benchmark |
 | bm25s (numpy, numba backends) | 10 | pending benchmark | pending benchmark | not reported | n/a |
-| BM25F BMW | 100 | pending benchmark | pending benchmark | pending benchmark | pending benchmark |
+| BM25F BMW, category doc order | 10 | pending benchmark | pending benchmark | pending benchmark | pending benchmark |
+| BM25F BMW, WANDS doc order | 10 | pending benchmark | pending benchmark | pending benchmark | pending benchmark |
+| BM25F exhaustive and BMW | 100 | pending benchmark | pending benchmark | pending benchmark | pending benchmark |
 
 **HNSW against faiss at matched recall** (both single-threaded, M 16, efConstruction 200, inner
 product; recall@10 against exact search):
@@ -289,7 +295,7 @@ number of conflicting pairs is recorded in the results file.
 src/prodsearch/
   analysis.py        folding, tokenising, S-stemmer
   catalog.py         WANDS loaders, feature parsing, smoke subsets
-  lexical/           layout.py (bit-packed blocks), wand.py (kernels), bm25f.py (impacts, index)
+  lexical/           layout.py (bit-packed blocks), wand.py (kernels), bm25f.py (impacts, doc order)
   dense/             hnsw.py (graph build and search), encoders.py (ONNX models)
   filters.py         facet masks
   fusion.py          RRF and z-score convex fusion
@@ -310,6 +316,7 @@ bench/results/       benchmark output (JSON)
 2. [Bit-pack d-gaps per 128-document block](docs/adr/0002-frame-of-reference-blocks.md)
 3. [Tune fusion and field weights on held-out folds](docs/adr/0003-cross-validated-fusion.md)
 4. [Apply filters inside both retrievers](docs/adr/0004-filters-inside-retrieval.md)
+5. [Assign internal doc ids in category order](docs/adr/0005-category-clustered-doc-ids.md)
 
 ## Licence
 

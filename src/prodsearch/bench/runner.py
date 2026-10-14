@@ -50,7 +50,7 @@ from prodsearch.lexical.bm25f import (
 )
 from prodsearch.lexical.layout import PostingLayout
 from prodsearch.rerank import RerankBudget
-from prodsearch.store import field_tokens, single_field
+from prodsearch.store import clustered_order, field_tokens, single_field
 
 Log = Callable[[str], None]
 
@@ -190,7 +190,10 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
     tokens = field_tokens(catalog)
     build["analyze_seconds"] = time.perf_counter() - t
     t = time.perf_counter()
-    fielded = FieldedPostings.build(tokens)
+    order = clustered_order(catalog)
+    build["doc_order_seconds"] = time.perf_counter() - t
+    t = time.perf_counter()
+    fielded = FieldedPostings.build(tokens, order)
     build["fielded_postings_seconds"] = time.perf_counter() - t
     t = time.perf_counter()
     layout = PostingLayout.build(fielded.docs, fielded.term_ptr, fielded.n_docs, BLOCK_SIZE)
@@ -203,11 +206,17 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
     build["terms"] = layout.n_terms
     build["doc_id_bits_per_posting"] = 8 * layout.nbytes()["doc_id_words"] / layout.n_postings
     build["uncompressed_doc_id_bytes"] = 4 * layout.n_postings
+    # The same index with postings in catalogue order, to show what the doc order buys.
+    bm25f_catalogue_order = LexicalIndex.build(FieldedPostings.build(tokens), DEFAULT_BM25F)
+    build["bm25f_catalogue_order_bytes"] = bm25f_catalogue_order.nbytes()
+    build["catalogue_order_doc_id_bits_per_posting"] = (
+        8 * bm25f_catalogue_order.layout.nbytes()["doc_id_words"] / layout.n_postings
+    )
     log(f"lexical   {layout.n_terms} terms, {layout.n_postings} postings")
 
     single = single_field(tokens)
     t = time.perf_counter()
-    bm25 = LexicalIndex.build(FieldedPostings.build(single), SINGLE_FIELD_BM25, BLOCK_SIZE)
+    bm25 = LexicalIndex.build(FieldedPostings.build(single, order), SINGLE_FIELD_BM25, BLOCK_SIZE)
     build["bm25_single_field_seconds"] = time.perf_counter() - t
     build["bm25_single_field_bytes"] = bm25.nbytes()
     t = time.perf_counter()
@@ -356,7 +365,11 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
 
     # ------------------------------------------------------------------ latency
     lexical_latency = _lexical_latency(
-        {"bm25_single_field": bm25, "bm25f_default": bm25f_default},
+        {
+            "bm25_single_field": bm25,
+            "bm25f_default": bm25f_default,
+            "bm25f_default_catalogue_order": bm25f_catalogue_order,
+        },
         {"bm25s_numpy": bm25s_np, "bm25s_numba": bm25s_nb},
         q_tokens,
     )
