@@ -159,7 +159,7 @@ def serve(
 def bench(
     out: Annotated[Path, typer.Option(help="Results JSON.")] = Path("bench/results/wands.json"),
     smoke: Annotated[
-        bool, typer.Option(help="Tiny subset (first 12 queries, their judged products).")
+        bool, typer.Option(help="Tiny subset (first 5 queries, their judged products).")
     ] = False,
     latency_queries: Annotated[
         int, typer.Option(help="Queries timed through the full cascade.")
