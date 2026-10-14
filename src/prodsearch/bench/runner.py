@@ -411,6 +411,7 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
             "rrf_k": RRF_K,
             "hnsw": {"M": HNSW_M, "ef_construction": HNSW_EF_CONSTRUCTION, "ef_search": EF_SEARCH},
             "rerank_depth": RERANK_DEPTH,
+            "filtered_exact_below": CascadeConfig().exact_below,
             "bi_encoder": {
                 "model": f"{sources.BI_ENCODER.repo_id}@{sources.BI_ENCODER.revision}",
                 "max_length": encoder.max_length,

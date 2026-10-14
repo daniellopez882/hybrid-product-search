@@ -82,7 +82,7 @@ class AttributeIndex:
 
     @cached_property
     def _features(self) -> tuple[dict[str, int], np.ndarray, np.ndarray]:
-        # Built on first use: 2.4 M (key, value) occurrences on WANDS, rarely needed.
+        # Built on first use: one entry per (key, value) occurrence, and rarely needed.
         groups: dict[str, list[int]] = {}
         for doc, raw in enumerate(self.catalog.features):
             for key, value in set(parse_features(raw)):
