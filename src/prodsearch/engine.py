@@ -79,10 +79,12 @@ class SearchResponse:
     rerank_truncated: bool = False
     filter_matches: int | None = None
     lexical_stats: dict[str, int] = field(default_factory=dict)
+    filters: dict[str, object] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, object]:
         return {
             "query": self.query,
+            "filters": self.filters,
             "stages": self.stages,
             "timings_ms": {k: round(v, 3) for k, v in self.timings_ms.items()},
             "reranked": self.reranked,
@@ -153,7 +155,9 @@ class SearchEngine:
         t = lap("filter", t)
         if n_match == 0:
             timings["total"] = (time.perf_counter() - t_start) * 1000.0
-            return SearchResponse(req.query, [], timings, stages, filter_matches=0)
+            return SearchResponse(
+                req.query, [], timings, stages, filter_matches=0, filters=req.filters.describe()
+            )
 
         use_lex = req.mode in ("hybrid", "lexical")
         use_dense = req.mode in ("hybrid", "dense") and self.has_dense
@@ -232,4 +236,5 @@ class SearchEngine:
             rerank_truncated=truncated,
             filter_matches=n_match,
             lexical_stats=lex_stats,
+            filters=req.filters.describe(),
         )

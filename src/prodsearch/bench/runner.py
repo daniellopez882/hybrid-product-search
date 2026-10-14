@@ -34,7 +34,7 @@ from prodsearch.bench.metrics import (
     paired_bootstrap,
     per_query,
 )
-from prodsearch.catalog import Catalog, Wands, load_wands
+from prodsearch.catalog import Catalog, Query, Wands, load_wands
 from prodsearch.dense.encoders import BGE_QUERY_PREFIX, OnnxBiEncoder, OnnxCrossEncoder
 from prodsearch.dense.hnsw import HNSWIndex, exact_search
 from prodsearch.engine import CascadeConfig, SearchEngine, SearchRequest
@@ -90,7 +90,7 @@ def bm25f_grid() -> list[BM25FConfig]:
     return grid
 
 
-def _clean(obj):
+def _clean(obj: object) -> object:
     """JSON-safe copy: numpy scalars to Python, NaN/inf to None."""
     if isinstance(obj, dict):
         return {str(k): _clean(v) for k, v in obj.items()}
@@ -456,7 +456,15 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
 
 
 # ---------------------------------------------------------------------- helpers
-def _convex_grid(index, lex_lists, dense_lists, vectors, q_vecs, q_tokens, grades):
+def _convex_grid(
+    index: LexicalIndex,
+    lex_lists: Sequence[np.ndarray],
+    dense_lists: Sequence[np.ndarray],
+    vectors: np.ndarray,
+    q_vecs: np.ndarray,
+    q_tokens: Sequence[Sequence[str]],
+    grades: Sequence[dict[int, int]],
+) -> tuple[list[list[np.ndarray]], np.ndarray]:
     """Convex-fused top-DEPTH lists and nDCG@10 for every alpha in the grid."""
     lists: list[list[np.ndarray]] = [[] for _ in ALPHAS]
     ndcg = np.empty((len(ALPHAS), len(q_tokens)))
@@ -471,7 +479,15 @@ def _convex_grid(index, lex_lists, dense_lists, vectors, q_vecs, q_tokens, grade
     return lists, ndcg
 
 
-def _rerank_cached(cross, cache, qi, query, ranking, catalog, depth) -> np.ndarray:
+def _rerank_cached(
+    cross: OnnxCrossEncoder,
+    cache: dict[tuple[int, int], float],
+    qi: int,
+    query: str,
+    ranking: np.ndarray,
+    catalog: Catalog,
+    depth: int,
+) -> np.ndarray:
     head = [int(d) for d in ranking[:depth]]
     missing = [d for d in head if (qi, d) not in cache]
     if missing:
@@ -482,7 +498,11 @@ def _rerank_cached(cross, cache, qi, query, ranking, catalog, depth) -> np.ndarr
     return np.concatenate([np.array(head, dtype=np.int32)[order], ranking[depth:]])
 
 
-def _lexical_latency(indexes: dict[str, LexicalIndex], baselines: dict, q_tokens) -> dict:
+def _lexical_latency(
+    indexes: dict[str, LexicalIndex],
+    baselines: dict[str, Bm25sBaseline],
+    q_tokens: Sequence[Sequence[str]],
+) -> dict:
     out: dict[str, dict] = {}
     for k in (10, DEPTH):
         rows: dict[str, dict] = {}
@@ -517,7 +537,9 @@ def _lexical_latency(indexes: dict[str, LexicalIndex], baselines: dict, q_tokens
     return out
 
 
-def _ann_section(vectors, q_vecs, graph: HNSWIndex, faiss_index: FaissHnswBaseline) -> dict:
+def _ann_section(
+    vectors: np.ndarray, q_vecs: np.ndarray, graph: HNSWIndex, faiss_index: FaissHnswBaseline
+) -> dict:
     truth10 = [set(exact_search(vectors, qv, 10)[0].tolist()) for qv in q_vecs]
     truth100 = [set(exact_search(vectors, qv, DEPTH)[0].tolist()) for qv in q_vecs]
     sweep = []
@@ -582,7 +604,16 @@ def _cascade_latency(engine: SearchEngine, texts: Sequence[str], alpha: float) -
     }
 
 
-def _filtered_section(catalog, queries, grades, q_tokens, q_vecs, lexical, graph, vectors) -> dict:
+def _filtered_section(
+    catalog: Catalog,
+    queries: Sequence[Query],
+    grades: Sequence[dict[int, int]],
+    q_tokens: Sequence[Sequence[str]],
+    q_vecs: np.ndarray,
+    lexical: LexicalIndex,
+    graph: HNSWIndex,
+    vectors: np.ndarray,
+) -> dict:
     """Facet filter = the query's own WANDS query_class (an oracle facet choice)."""
     attrs = AttributeIndex(catalog)
     lex_ms, lex_exact_ms, lex_mismatch = [], [], 0

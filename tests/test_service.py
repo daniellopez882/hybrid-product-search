@@ -30,6 +30,7 @@ def test_search_get_contract(client: testing.TestClient) -> None:
     body = result.json
     assert set(body) == {
         "query",
+        "filters",
         "stages",
         "timings_ms",
         "reranked",
@@ -67,6 +68,7 @@ def test_search_post_with_filters(hybrid_client: testing.TestClient) -> None:
     )
     assert result.status_code == 200
     body = result.json
+    assert body["filters"] == {"class": ["Area Rugs"], "attr": ["color=cream"]}
     assert body["filter_matches"] == 1
     assert [h["name"] for h in body["hits"]] == ["shag area rug 8 x 10"]
     assert body["stages"] == ["lexical", "dense", "fusion:convex", "rerank"]

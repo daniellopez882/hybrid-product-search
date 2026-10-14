@@ -230,8 +230,8 @@ docker run --rm -p 8000:8000 prodsearch
 | `class`, `category`, `min_rating`, `min_reviews`, `attr` | facets; `class` and `attr` repeat |
 
 The response carries `hits` (product id, name, class, fused score, lexical and dense ranks,
-cross-encoder logit), `stages`, `timings_ms` per stage, `reranked`, `rerank_truncated`,
-`filter_matches` and the lexical kernel's counters. `GET /healthz` reports the catalogue size and
+cross-encoder logit), the applied `filters`, `stages`, `timings_ms` per stage, `reranked`,
+`rerank_truncated`, `filter_matches` and the lexical kernel's counters. `GET /healthz` reports the catalogue size and
 which stages are loaded.
 
 ## Running the benchmark

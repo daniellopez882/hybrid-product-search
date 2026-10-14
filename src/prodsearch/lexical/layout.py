@@ -31,7 +31,9 @@ def _bits_for(value: int) -> int:
 
 
 @nb.njit(cache=True)
-def _build_layout(docs: np.ndarray, term_ptr: np.ndarray, block_size: int):
+def _build_layout(
+    docs: np.ndarray, term_ptr: np.ndarray, block_size: int
+) -> tuple[np.ndarray, ...]:
     n_terms = term_ptr.shape[0] - 1
     term_blk = np.empty(n_terms + 1, dtype=np.int64)
     n_blocks = 0
@@ -91,7 +93,15 @@ def _build_layout(docs: np.ndarray, term_ptr: np.ndarray, block_size: int):
 
 
 @nb.njit(cache=True, nogil=True)
-def decode_block(words, blk_bits, blk_word, blk_post, b, prev, out) -> int:
+def decode_block(
+    words: np.ndarray,
+    blk_bits: np.ndarray,
+    blk_word: np.ndarray,
+    blk_post: np.ndarray,
+    b: int,
+    prev: int,
+    out: np.ndarray,
+) -> int:
     """Write the doc ids of block `b` into `out`; `prev` is the previous block's last id or -1."""
     n = blk_post[b + 1] - blk_post[b]
     bits = np.int64(blk_bits[b])
@@ -116,7 +126,15 @@ def decode_block(words, blk_bits, blk_word, blk_post, b, prev, out) -> int:
 
 
 @nb.njit(cache=True)
-def _decode_all(words, blk_bits, blk_word, blk_post, blk_last, term_blk, block_size):
+def _decode_all(
+    words: np.ndarray,
+    blk_bits: np.ndarray,
+    blk_word: np.ndarray,
+    blk_post: np.ndarray,
+    blk_last: np.ndarray,
+    term_blk: np.ndarray,
+    block_size: int,
+) -> np.ndarray:
     n_terms = term_blk.shape[0] - 1
     out = np.empty(blk_post[-1], dtype=np.int32)
     buf = np.empty(block_size, dtype=np.int32)

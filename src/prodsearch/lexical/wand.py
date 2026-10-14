@@ -25,12 +25,12 @@ N_STATS = 3
 
 
 @nb.njit(cache=True, nogil=True, inline="always")
-def _worse(s1, d1, s2, d2) -> bool:
+def _worse(s1: int, d1: int, s2: int, d2: int) -> bool:
     return s1 < s2 or (s1 == s2 and d1 > d2)
 
 
 @nb.njit(cache=True, nogil=True)
-def _sift_down(hs, hd, size, i) -> None:
+def _sift_down(hs: np.ndarray, hd: np.ndarray, size: int, i: int) -> None:
     while True:
         left = 2 * i + 1
         if left >= size:
@@ -48,7 +48,7 @@ def _sift_down(hs, hd, size, i) -> None:
 
 
 @nb.njit(cache=True, nogil=True)
-def heap_offer(hs, hd, size, k, score, doc) -> int:
+def heap_offer(hs: np.ndarray, hd: np.ndarray, size: int, k: int, score: int, doc: int) -> int:
     """Offer (score, doc) to a size-k heap whose root is the current worst. Returns the new size."""
     if size < k:
         i = size
@@ -71,7 +71,7 @@ def heap_offer(hs, hd, size, k, score, doc) -> int:
 
 
 @nb.njit(cache=True, nogil=True)
-def heap_sorted(hs, hd, size):
+def heap_sorted(hs: np.ndarray, hd: np.ndarray, size: int) -> tuple[np.ndarray, np.ndarray]:
     """Drain the heap into (doc ids, scores) ordered best first."""
     docs = np.empty(size, dtype=np.int32)
     scores = np.empty(size, dtype=np.int64)
@@ -87,7 +87,7 @@ def heap_sorted(hs, hd, size):
 
 
 @nb.njit(cache=True, nogil=True)
-def _passes(mask, doc) -> bool:
+def _passes(mask: np.ndarray, doc: int) -> bool:
     return mask.shape[0] == 0 or mask[doc] != 0
 
 
@@ -100,7 +100,7 @@ C_FIRST, C_LAST, C_BLK, C_POS, C_DOC = 0, 1, 2, 3, 4
 
 
 @nb.njit(cache=True, nogil=True)
-def _load(ix, cur, buf, i, b, stats) -> None:
+def _load(ix: tuple, cur: np.ndarray, buf: np.ndarray, i: int, b: int, stats: np.ndarray) -> None:
     words, blk_last, blk_bits, blk_word, blk_post = ix[0], ix[1], ix[2], ix[3], ix[4]
     prev = -1 if b == cur[i, C_FIRST] else np.int64(blk_last[b - 1])
     decode_block(words, blk_bits, blk_word, blk_post, b, prev, buf[i])
@@ -111,7 +111,9 @@ def _load(ix, cur, buf, i, b, stats) -> None:
 
 
 @nb.njit(cache=True, nogil=True)
-def _open(ix, cur, buf, i, term, stats) -> None:
+def _open(
+    ix: tuple, cur: np.ndarray, buf: np.ndarray, i: int, term: int, stats: np.ndarray
+) -> None:
     term_blk = ix[5]
     cur[i, C_FIRST] = term_blk[term]
     cur[i, C_LAST] = term_blk[term + 1] - 1
@@ -122,7 +124,7 @@ def _open(ix, cur, buf, i, term, stats) -> None:
 
 
 @nb.njit(cache=True, nogil=True)
-def _next(ix, cur, buf, i, stats) -> None:
+def _next(ix: tuple, cur: np.ndarray, buf: np.ndarray, i: int, stats: np.ndarray) -> None:
     blk_post = ix[4]
     b = cur[i, C_BLK]
     pos = cur[i, C_POS] + 1
@@ -136,7 +138,9 @@ def _next(ix, cur, buf, i, stats) -> None:
 
 
 @nb.njit(cache=True, nogil=True)
-def _seek(ix, cur, buf, i, target, stats) -> None:
+def _seek(
+    ix: tuple, cur: np.ndarray, buf: np.ndarray, i: int, target: int, stats: np.ndarray
+) -> None:
     """Move cursor i to its first doc >= target, skipping whole blocks via `blk_last`."""
     if cur[i, C_DOC] >= target:
         return
@@ -158,13 +162,13 @@ def _seek(ix, cur, buf, i, target, stats) -> None:
 
 
 @nb.njit(cache=True, nogil=True)
-def _impact(ix, cur, i) -> int:
+def _impact(ix: tuple, cur: np.ndarray, i: int) -> int:
     blk_post, impacts = ix[4], ix[6]
     return np.int64(impacts[blk_post[cur[i, C_BLK]] + cur[i, C_POS]])
 
 
 @nb.njit(cache=True, nogil=True)
-def _shallow(ix, cur, i, target):
+def _shallow(ix: tuple, cur: np.ndarray, i: int, target: int) -> tuple[int, int]:
     """Block max and last doc of the block of cursor i that would hold `target`, without decoding.
 
     A term with no posting at or after `target` contributes nothing there and bounds nothing.
@@ -180,7 +184,7 @@ def _shallow(ix, cur, i, target):
 
 
 @nb.njit(cache=True, nogil=True)
-def _sort_by_doc(order, cur, m) -> None:
+def _sort_by_doc(order: np.ndarray, cur: np.ndarray, m: int) -> None:
     for a in range(1, m):
         x = order[a]
         j = a - 1
@@ -192,7 +196,15 @@ def _sort_by_doc(order, cur, m) -> None:
 
 # ----------------------------------------------------------------------------- kernels
 @nb.njit(cache=True, nogil=True)
-def wand_topk(ix, terms, weights, k, mask, block_size, use_block_max):
+def wand_topk(
+    ix: tuple,
+    terms: np.ndarray,
+    weights: np.ndarray,
+    k: int,
+    mask: np.ndarray,
+    block_size: int,
+    use_block_max: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """WAND (Broder et al., 2003) or, with `use_block_max`, block-max WAND (Ding and Suel, 2011)."""
     term_max = ix[8]
     m = terms.shape[0]
@@ -278,7 +290,15 @@ def wand_topk(ix, terms, weights, k, mask, block_size, use_block_max):
 
 
 @nb.njit(cache=True, nogil=True)
-def exhaustive_topk(ix, terms, weights, k, mask, n_docs, block_size):
+def exhaustive_topk(
+    ix: tuple,
+    terms: np.ndarray,
+    weights: np.ndarray,
+    k: int,
+    mask: np.ndarray,
+    n_docs: int,
+    block_size: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Term-at-a-time accumulation over every posting; the reference the pruned kernels match."""
     words, blk_last, blk_bits, blk_word, blk_post, term_blk, impacts = (
         ix[0],
@@ -315,7 +335,9 @@ def exhaustive_topk(ix, terms, weights, k, mask, n_docs, block_size):
 
 
 @nb.njit(cache=True, nogil=True)
-def score_docs(ix, terms, weights, docs, block_size):
+def score_docs(
+    ix: tuple, terms: np.ndarray, weights: np.ndarray, docs: np.ndarray, block_size: int
+) -> np.ndarray:
     """Exact scores of the given documents (any order), e.g. dense-only candidates in fusion."""
     order = np.argsort(docs)
     out = np.zeros(docs.shape[0], dtype=np.int64)

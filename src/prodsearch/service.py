@@ -32,7 +32,7 @@ def _bool(value: Any, name: str) -> bool:
     raise falcon.HTTPBadRequest(title="invalid parameter", description=f"{name} must be a boolean")
 
 
-def _number(value: Any, name: str, kind: type, lo: float, hi: float):
+def _number(value: Any, name: str, kind: type, lo: float, hi: float) -> Any:
     try:
         number = kind(value)
     except (TypeError, ValueError):

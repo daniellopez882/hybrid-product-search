@@ -26,7 +26,7 @@ import numpy as np
 
 
 @nb.njit(cache=True, nogil=True, fastmath=True, inline="always")
-def _dist(X, i, q) -> float:
+def _dist(X: np.ndarray, i: int, q: np.ndarray) -> float:
     acc = np.float32(0.0)
     for j in range(q.shape[0]):
         acc += X[i, j] * q[j]
@@ -35,7 +35,7 @@ def _dist(X, i, q) -> float:
 
 # Binary min-heap on (key, id) pairs stored in two arrays.
 @nb.njit(cache=True, nogil=True, inline="always")
-def _push(keys, ids, size, key, ident) -> int:
+def _push(keys: np.ndarray, ids: np.ndarray, size: int, key: float, ident: int) -> int:
     i = size
     keys[i] = key
     ids[i] = ident
@@ -50,7 +50,7 @@ def _push(keys, ids, size, key, ident) -> int:
 
 
 @nb.njit(cache=True, nogil=True, inline="always")
-def _pop(keys, ids, size) -> int:
+def _pop(keys: np.ndarray, ids: np.ndarray, size: int) -> int:
     """Remove the root; the caller reads keys[0]/ids[0] first."""
     size -= 1
     keys[0] = keys[size]
@@ -122,7 +122,17 @@ def _search_layer(
 
 
 @nb.njit(cache=True, nogil=True)
-def _greedy(X, q, start, layer, nb0, cnt0, nbu, cntu, up_off) -> int:
+def _greedy(
+    X: np.ndarray,
+    q: np.ndarray,
+    start: int,
+    layer: int,
+    nb0: np.ndarray,
+    cnt0: np.ndarray,
+    nbu: np.ndarray,
+    cntu: np.ndarray,
+    up_off: np.ndarray,
+) -> int:
     cur = start
     cur_d = _dist(X, cur, q)
     changed = True
@@ -141,7 +151,9 @@ def _greedy(X, q, start, layer, nb0, cnt0, nbu, cntu, up_off) -> int:
 
 
 @nb.njit(cache=True, nogil=True)
-def _select(X, cand_d, cand_i, n, m, out) -> int:
+def _select(
+    X: np.ndarray, cand_d: np.ndarray, cand_i: np.ndarray, n: int, m: int, out: np.ndarray
+) -> int:
     """Diversity heuristic: keep e only if it is closer to the base than to every kept node."""
     kept = 0
     for j in range(n):
@@ -160,7 +172,21 @@ def _select(X, cand_d, cand_i, n, m, out) -> int:
 
 
 @nb.njit(cache=True, nogil=True)
-def _link(X, node, nbr, layer, cap, nb0, cnt0, nbu, cntu, up_off, tmp_d, tmp_i, sel) -> None:
+def _link(
+    X: np.ndarray,
+    node: int,
+    nbr: int,
+    layer: int,
+    cap: int,
+    nb0: np.ndarray,
+    cnt0: np.ndarray,
+    nbu: np.ndarray,
+    cntu: np.ndarray,
+    up_off: np.ndarray,
+    tmp_d: np.ndarray,
+    tmp_i: np.ndarray,
+    sel: np.ndarray,
+) -> None:
     """Add `node` to `nbr`'s links on `layer`, shrinking with the heuristic when full."""
     row = up_off[nbr] + layer - 1
     count = cnt0[nbr] if layer == 0 else cntu[row]

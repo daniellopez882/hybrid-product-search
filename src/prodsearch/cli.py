@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 from prodsearch import paths, sources
 
+if TYPE_CHECKING:
+    from prodsearch.filters import Filter
+    from prodsearch.lexical.bm25f import BM25FConfig
+
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 
 
-def _weights(spec: str | None):
+def _weights(spec: str | None) -> BM25FConfig:
     from prodsearch.lexical.bm25f import DEFAULT_BM25F, BM25FConfig
 
     if not spec:
@@ -78,7 +82,7 @@ def _filters(
     category: str | None,
     min_rating: float | None,
     attr: list[str] | None,
-):
+) -> Filter:
     from prodsearch.filters import Filter
 
     pairs = []

@@ -48,7 +48,9 @@ METRICS = {
 }
 
 
-def per_query(rankings: Sequence[Sequence[int]], grades: Sequence[Mapping[int, int]]):
+def per_query(
+    rankings: Sequence[Sequence[int]], grades: Sequence[Mapping[int, int]]
+) -> dict[str, np.ndarray]:
     """{metric: array over queries} with NaN where the metric is undefined."""
     return {
         name: np.array([fn(r, g) for r, g in zip(rankings, grades, strict=True)])
