@@ -2,8 +2,10 @@
 
 Sections, in order: lexical retrieval (BM25, bm25s, BM25F default and CV-tuned), dense
 retrieval (exact, in-house HNSW, faiss HNSW at matched recall), fusion (RRF, CV-tuned convex),
-cross-encoder rerank, lexical kernel latency, the full cascade's per-stage latency, filtered
-search, and build cost. Everything lands in one JSON file with the machine and git state.
+cross-encoder rerank, lexical kernel latency, the full cascade's per-stage latency (and again
+with ONNX Runtime's spinning worker threads), filtered search, and build cost. Everything lands
+in one JSON file with the machine, the git state and the CPU that other processes used while
+each latency section ran.
 
 Relevance is reported on held-out folds: anything tuned (BM25F field weights, convex alpha) is
 chosen on four folds' queries and scored on the fifth, so every query is scored exactly once by
@@ -26,7 +28,7 @@ from prodsearch import paths, sources
 from prodsearch.analysis import analyze
 from prodsearch.bench import cv
 from prodsearch.bench.baselines import Bm25sBaseline, FaissHnswBaseline
-from prodsearch.bench.machine import git_state, local_now, machine
+from prodsearch.bench.machine import CpuMeter, git_state, local_now, machine
 from prodsearch.bench.metrics import (
     bootstrap_mean,
     latency_summary,
@@ -60,7 +62,8 @@ BLOCK_SIZE = 128
 EF_SEARCH = 128
 HNSW_M = 16
 HNSW_EF_CONSTRUCTION = 200
-EF_SWEEP = (10, 16, 24, 32, 48, 64, 96, 128, 192, 256)
+# Wide enough that both graphs reach the highest recall target on WANDS (0.98 at ef 256).
+EF_SWEEP = (10, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024)
 RECALL_TARGETS = (0.9, 0.95, 0.99)
 ALPHAS = tuple(round(float(a), 2) for a in np.linspace(0.0, 1.0, 21))
 RERANK_DEPTHS = (10, 20, 30, 50)
@@ -158,6 +161,8 @@ def _mean(values: Sequence[float]) -> float:
 
 def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) -> dict:
     wall = time.perf_counter()
+    whole_run = CpuMeter()
+    load: dict[str, dict] = {}
     started = local_now()
     full = load_wands(paths.wands_dir())
     dataset = {
@@ -274,7 +279,9 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
     faiss_index = FaissHnswBaseline(vectors, HNSW_M, HNSW_EF_CONSTRUCTION, threads=1)
     faiss_build = time.perf_counter() - t
     log(f"faiss     built in {faiss_build:.0f}s")
+    meter = CpuMeter()
     ann = _ann_section(vectors, q_vecs, graph, faiss_index)
+    load["ann_latency"] = meter.read()
     ann["build"] = {
         "in_house_seconds": hnsw_build,
         "faiss_seconds": faiss_build,
@@ -364,6 +371,7 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
     ]
 
     # ------------------------------------------------------------------ latency
+    meter = CpuMeter()
     lexical_latency = _lexical_latency(
         {
             "bm25_single_field": bm25,
@@ -373,6 +381,7 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
         {"bm25s_numpy": bm25s_np, "bm25s_numba": bm25s_nb},
         q_tokens,
     )
+    load["lexical_latency"] = meter.read()
     # The deployed configuration is tuned on all queries; it is only used for timing.
     deploy_ci = int(np.nanargmax(np.nanmean(grid_ndcg, axis=1)))
     if deploy_ci not in convex_ndcg:
@@ -397,11 +406,30 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
         CascadeConfig(DEPTH, DEPTH, EF_SEARCH, rerank=RerankBudget(RERANK_DEPTH, None)),
     )
     timed = np.random.default_rng(5).permutation(nq)[: min(latency_queries, nq)]
-    cascade = _cascade_latency(engine, [queries[i].text for i in timed], deploy_alpha)
+    timed_texts = [queries[i].text for i in timed]
+    meter = CpuMeter()
+    cascade = _cascade_latency(engine, timed_texts, deploy_alpha)
+    load["cascade_latency"] = meter.read()
     cascade["config"] = {"bm25f": grid[deploy_ci].to_json(), "alpha": deploy_alpha}
+    # Ablation: the same cascade with ONNX Runtime's spinning worker threads (its default).
+    spinning = SearchEngine(
+        catalog,
+        tuned_index[deploy_ci],
+        OnnxBiEncoder(spin=True),
+        vectors,
+        graph,
+        OnnxCrossEncoder(spin=True),
+        engine.cascade,
+    )
+    meter = CpuMeter()
+    cascade_spinning = _cascade_latency(spinning, timed_texts, deploy_alpha)
+    load["cascade_latency_ort_spinning"] = meter.read()
+    del spinning
+    meter = CpuMeter()
     filtered = _filtered_section(
         catalog, queries, grades, q_tokens, q_vecs, bm25f_default, graph, vectors
     )
+    load["filtered_latency"] = meter.read()
 
     result = {
         "benchmark": "wands-hybrid-search",
@@ -424,6 +452,7 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
             "rrf_k": RRF_K,
             "hnsw": {"M": HNSW_M, "ef_construction": HNSW_EF_CONSTRUCTION, "ef_search": EF_SEARCH},
             "rerank_depth": RERANK_DEPTH,
+            "onnx_intra_op_spinning": False,
             "filtered_exact_below": CascadeConfig().exact_below,
             "service_rerank_deadline_ms": CascadeConfig().rerank.deadline_ms,
             "bi_encoder": {
@@ -460,9 +489,12 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
         "lexical_latency": lexical_latency,
         "ann": ann,
         "cascade_latency": cascade,
+        "cascade_latency_ort_spinning": cascade_spinning,
         "filtered": filtered,
         "build": build,
     }
+    load["whole_run"] = whole_run.read()
+    result["cpu_load"] = load
     result["wall_seconds"] = time.perf_counter() - wall
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(_clean(result), indent=2) + "\n", encoding="utf-8")
