@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# No job downloads WANDS or a model: the default pytest selection deselects `integration`, and
+# the container is exercised against the 40-product sample catalogue bundled in the package.
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: ruff check
+        run: uv run ruff check .
+      - name: ruff format --check
+        run: uv run ruff format --check .
+      - name: pytest (default suite)
+        run: uv run pytest
+      - name: CLI search against the sample catalogue
+        run: uv run prodsearch search "bar stools" --sample --k 3 | tee search.txt && grep -q "Bar Stools" search.txt
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build --tag prodsearch:ci .
+      - name: image user is uid 10001
+        run: test "$(docker run --rm --entrypoint id prodsearch:ci -u)" = "10001"
+      - name: no compiler in the runtime image
+        run: |
+          ! docker run --rm --entrypoint sh prodsearch:ci -c "command -v gcc || command -v cc"
+      - name: start the service on the sample catalogue
+        run: docker run --detach --name search --publish 8000:8000 prodsearch:ci
+      - name: wait for /healthz
+        run: |
+          for i in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:8000/healthz; then exit 0; fi
+            sleep 2
+          done
+          docker logs search
+          exit 1
+      - name: /search returns hits and per-stage timings
+        run: |
+          curl --silent --fail "http://127.0.0.1:8000/search?q=bar%20stools&k=3" | tee search.json
+          python3 - <<'PY'
+          import json
+          body = json.load(open("search.json"))
+          assert body["hits"][0]["product_class"] == "Bar Stools", body
+          assert {"analyze", "lexical", "total"} <= set(body["timings_ms"]), body
+          PY
+      - name: container health check turns healthy
+        run: |
+          for i in $(seq 1 45); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' search)
+            echo "health: $status"
+            if [ "$status" = "healthy" ]; then exit 0; fi
+            sleep 4
+          done
+          exit 1
+      - name: stop the service
+        if: always()
+        run: docker rm --force search || true

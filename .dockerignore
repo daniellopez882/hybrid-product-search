@@ -1,0 +1,11 @@
+# The image is built from the lock file, the package source and the two files the wheel
+# metadata points at. Tests, docs, benchmark results, data, caches and git history stay out.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+src/**/__pycache__
+src/**/*.nbi
+src/**/*.nbc
