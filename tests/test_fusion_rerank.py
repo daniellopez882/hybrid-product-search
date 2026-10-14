@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-from fakes import OverlapScorer
 
+from fakes import OverlapScorer
 from prodsearch.fusion import convex, rrf, union, zscore
 from prodsearch.rerank import RerankBudget, rerank
 

@@ -127,12 +127,12 @@ class SearchEngine:
             caps.append("rerank")
         return caps
 
-    def _dense(self, q: np.ndarray, mask: np.ndarray | None, n_match: int | None):
+    def _dense(
+        self, q: np.ndarray, mask: np.ndarray | None, n_match: int | None
+    ) -> tuple[np.ndarray, np.ndarray]:
         cfg = self.cascade
         if self.hnsw is None or (n_match is not None and n_match < cfg.exact_below):
-            return exact_search(
-                self.vectors, q, cfg.dense_depth, None if mask is None else mask > 0
-            )
+            return exact_search(self.vectors, q, cfg.dense_depth, mask)
         return self.hnsw.search(q, cfg.dense_depth, cfg.ef_search, mask)
 
     def search(self, req: SearchRequest) -> SearchResponse:

@@ -89,9 +89,6 @@ class AttributeIndex:
                 groups.setdefault(f"{key}={value}", []).append(doc)
         return _csr(groups)
 
-    def class_names(self) -> list[str]:
-        return sorted(self._classes)
-
     def mask(self, flt: Filter) -> np.ndarray | None:
         """uint8 mask over documents, or None when the filter constrains nothing."""
         if flt.is_empty():

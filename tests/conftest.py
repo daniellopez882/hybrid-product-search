@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from fakes import HashingEncoder, OverlapScorer
 
+from fakes import HashingEncoder, OverlapScorer
 from prodsearch.catalog import Catalog, load_catalog
 from prodsearch.dense.hnsw import HNSWIndex
 from prodsearch.engine import SearchEngine

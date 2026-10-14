@@ -12,9 +12,7 @@ def posting_lists(draw):
     lists = []
     for _ in range(n_terms):
         size = draw(st.integers(1, min(n_docs, 400)))
-        docs = draw(
-            st.lists(st.integers(0, n_docs - 1), min_size=size, max_size=size, unique=True)
-        )
+        docs = draw(st.lists(st.integers(0, n_docs - 1), min_size=size, max_size=size, unique=True))
         lists.append(sorted(docs))
     return n_docs, lists
 

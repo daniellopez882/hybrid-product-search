@@ -28,9 +28,7 @@ def reference_bm25f(term: str, doc: int, config: BM25FConfig = CONFIG) -> float:
         if config.weights[field] and avg:
             pseudo += config.weights[field] * tf / (1 - b + b * lengths[doc] / avg)
     df = sum(
-        1
-        for d in range(n)
-        if any(term in TOKENS[f][d] for f in TOKENS if config.weights[f] > 0)
+        1 for d in range(n) if any(term in TOKENS[f][d] for f in TOKENS if config.weights[f] > 0)
     )
     if pseudo == 0:
         return 0.0

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from fakes import HashingEncoder
 
+from fakes import HashingEncoder
 from prodsearch import sources
 from prodsearch.store import (
     GRAPH,
