@@ -1,0 +1,28 @@
+# environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+*.nbi
+*.nbc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.cache/
+
+# data, models and built indexes never enter the repository
+data/
+models/
+index/
+*.npy
+*.npz
+*.onnx
+*.csv
+!src/prodsearch/sample/*.tsv
+
+# smoke benchmark output (headline results are committed, smoke runs are not)
+bench/results/smoke-*.json
+
+# build output
+dist/
+build/
+*.egg-info/

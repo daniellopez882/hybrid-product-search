@@ -1,0 +1,63 @@
+[project]
+name = "hybrid-product-search"
+version = "0.1.0"
+description = "Retrieve-fuse-rerank product search: numba BM25F with block-max WAND, a numba HNSW graph, RRF and cross-validated convex fusion, and a cross-encoder rerank, evaluated on Wayfair WANDS."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Daniel Lopez" }]
+requires-python = ">=3.12,<3.13"
+keywords = ["search", "bm25f", "wand", "block-max-wand", "hnsw", "numba", "rrf", "wands", "falcon"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Text Processing :: Indexing",
+    "Typing :: Typed",
+]
+dependencies = [
+    "falcon>=4.0",
+    "numba>=0.61",
+    "numpy>=2.0",
+    "onnxruntime>=1.19",
+    "tokenizers>=0.20",
+    "typer>=0.12",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+prodsearch = "prodsearch.cli:app"
+
+[dependency-groups]
+dev = [
+    "bm25s>=0.2.6",
+    "faiss-cpu>=1.9",
+    "hypothesis>=6.100",
+    "pytest>=8.2",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prodsearch"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "N", "PT", "NPY", "PERF", "C4"]
+# numba kernels use short math names (N, M, K) the way the papers do.
+ignore = ["N803", "N806"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = "-ra -m 'not integration'"
+markers = [
+    "integration: needs WANDS and the ONNX models from `prodsearch fetch` (run with -m integration)",
+]
