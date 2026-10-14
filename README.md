@@ -116,7 +116,10 @@ an `ef_construction` beam per layer, neighbour selection with the diversity heur
 bidirectional links shrunk with the same heuristic when a node overflows. Levels are drawn with
 `mL = 1 / ln(M)`. A query descends greedily to layer 0 and runs one beam of width
 `max(ef, k)`; with a facet mask, failing nodes are expanded but never returned. Below 2,000
-matching products the engine skips the graph and scans the matching vectors exactly.
+matching products the engine skips the graph and scans the matching vectors exactly. Neighbour
+rows are scattered in memory, so the beam computes the distances of an expanded node's unvisited
+neighbours four rows at a time, which keeps more loads in flight than one dot product after
+another.
 
 ### 5. Fuse
 

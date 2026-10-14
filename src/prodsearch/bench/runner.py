@@ -439,6 +439,8 @@ def run(out: Path, smoke: bool, latency_queries: int, log: Log, command: str) ->
             "folds": N_FOLDS,
             "fold_seed": FOLD_SEED,
             "bootstrap_resamples": N_BOOT,
+            "confidence_level": 0.95,
+            "recall_targets": list(RECALL_TARGETS),
             "gains": {"Exact": 2, "Partial": 1, "Irrelevant": 0},
         },
         "relevance": relevance,
